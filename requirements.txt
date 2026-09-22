@@ -1,0 +1,27 @@
+# Web framework and ASGI server
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+# Required by FastAPI to parse multipart/form-data (image uploads)
+python-multipart==0.0.20
+pydantic==2.9.2
+pydantic-settings==2.6.1
+
+# Machine learning runtime.
+# torch and torchvision are installed from PyTorch's CPU index in the Dockerfile;
+# they are pinned here too so that the versions are documented in one place and a
+# local (non-Docker) install resolves to the same releases.
+torch==2.5.1
+torchvision==0.20.1
+transformers==4.46.3
+# Applies the LoRA adapter on top of the Qwen2-VL base model.
+peft==0.13.2
+# Required by transformers to load large checkpoints without doubling peak memory.
+accelerate==1.1.1
+# Imported directly by scripts/download_model.py, so it is pinned explicitly rather
+# than being relied on as a transitive dependency of transformers.
+huggingface-hub==0.26.2
+pillow==11.0.0
+
+# Database: ORM and PostgreSQL driver
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
