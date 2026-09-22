@@ -1,0 +1,83 @@
+# Two containers, one concern each: the API serves the model, PostgreSQL stores the
+# history. Compose puts them on a private network where each service is reachable by
+# its own name, so the API connects to "db:5432" rather than to localhost.
+#
+# Values for ${...} are read from the .env file next to this one (see .env.example).
+
+services:
+  db:
+    # Alpine is a good fit here: the official PostgreSQL image is C, already built,
+    # and never compiles Python wheels the way the API image would have to.
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Containers are disposable, this data is not. A named volume survives
+      # `docker compose down` and every image rebuild.
+      - pgdata:/var/lib/postgresql/data
+    # No `ports:` on purpose. The database is reachable from the api service over
+    # the private network and from nowhere else; publishing 5432 to the host would
+    # widen the attack surface for no benefit.
+    healthcheck:
+      # depends_on alone only guarantees that the container was started, not that
+      # PostgreSQL accepts connections. pg_isready is what closes that gap.
+      # $$ escapes the substitution so the variable is expanded inside the container.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      # The very first start runs initdb, which takes considerably longer than a
+      # restart; failures during this window do not count against `retries`.
+      start_period: 30s
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Assembled from the same variables the db service uses, so the password
+      # is defined in exactly one place and the two can never drift apart.
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MAX_NEW_TOKENS: ${MAX_NEW_TOKENS:-150}
+      # Caps how much of an image the model has to look at. Lower means fewer
+      # vision tokens and a shorter prompt, at the cost of visible detail.
+      MAX_PIXELS: ${MAX_PIXELS:-401408}
+    ports:
+      # host:container. This is what actually publishes the port; EXPOSE in the
+      # Dockerfile only documents it.
+      - "8000:8000"
+    volumes:
+      # The ~4.75 GB of model weights live here rather than in the image, so
+      # rebuilding the image never re-downloads them.
+      - hf-cache:/opt/huggingface
+    depends_on:
+      db:
+        # Wait for the healthcheck above to pass, not merely for the container
+        # to start, because the API connects to the database during startup.
+        condition: service_healthy
+    healthcheck:
+      # The slim image has no curl, so the check is written in Python, which is
+      # guaranteed to be present.
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\"",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      # Loading the model takes minutes on CPU. Without a generous start_period
+      # Docker would declare the container unhealthy and restart it forever.
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          # The model needs ~4.4 GB plus overhead. The ceiling stops a runaway
+          # request from taking the whole host down with it.
+          memory: 8g
+
+volumes:
+  pgdata:
+  hf-cache:

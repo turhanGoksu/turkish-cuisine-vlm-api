@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import time
+import warnings
 from io import BytesIO
 
 import torch
@@ -31,9 +32,44 @@ DEFAULT_QUESTION: str = "Bu yemek nedir ve besin değerleri nasıldır?"
 # knob on worst-case request latency.
 MAX_NEW_TOKENS: int = int(os.environ.get("MAX_NEW_TOKENS", "150"))
 
+# Qwen2-VL sizes an image dynamically, and every 28x28 block becomes a token the model
+# has to attend over. The checkpoint's own ceiling allows roughly 3585x3585, which is
+# far more detail than a plate of food needs; capping it bounds the prefill cost.
+# 401408 = 512 blocks of 28x28, about a 634x634 image.
+MAX_PIXELS: int = int(os.environ.get("MAX_PIXELS", "401408"))
+
 
 class InvalidImageError(ValueError):
     """Raised when the uploaded bytes cannot be decoded as an image."""
+
+
+def _ensure_adapter_applied(caught: list[warnings.WarningMessage]) -> None:
+    """Turn peft's "missing adapter keys" warning into a hard failure.
+
+    When the adapter's weight names do not match the base model's module names, peft
+    only warns and carries on, leaving the service running the unmodified base model
+    while every answer still looks plausible. A confidently wrong answer is worse than
+    no answer, and unlike a transient database error this never recovers on its own,
+    so the process must refuse to start.
+
+    Args:
+        caught: The warnings recorded while the adapter was being loaded.
+
+    Raises:
+        RuntimeError: If any warning reports missing adapter keys.
+    """
+    for entry in caught:
+        message = str(entry.message)
+        if "missing adapter keys" in message.lower():
+            raise RuntimeError(
+                "The LoRA adapter did not attach to the base model: peft reported "
+                "missing adapter keys, so the fine-tuned weights are not in use. The "
+                "usual cause is a transformers version that names the model's "
+                "submodules differently from the version the adapter was trained "
+                f"with. Original warning: {message[:200]}"
+            )
+        # Anything else is still worth seeing, just not worth dying for.
+        logger.warning("peft: %s", message[:200])
 
 
 def decode_image(data: bytes) -> Image.Image:
@@ -78,20 +114,29 @@ class DietitianModel:
             # bfloat16 halves the memory footprint to ~4.4 GB. float32 would need
             # ~8.9 GB and get the container OOM-killed; float16 is poorly supported
             # on CPU, where many operations have no half-precision kernel.
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             # Stream the checkpoint shard by shard instead of materialising a full
             # extra copy of the weights while loading.
             low_cpu_mem_usage=True,
         )
 
         logger.info("Applying LoRA adapter %s", ADAPTER_MODEL_ID)
-        model = PeftModel.from_pretrained(base_model, ADAPTER_MODEL_ID)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = PeftModel.from_pretrained(base_model, ADAPTER_MODEL_ID)
+        _ensure_adapter_applied(caught)
         # Disable dropout and other training-only behaviour.
         model.eval()
 
         # The processor (tokenizer + image pre-processing) belongs to the base model;
         # the adapter only changes weights, not the input format.
-        processor = Qwen2VLProcessor.from_pretrained(BASE_MODEL_ID)
+        #
+        # use_fast=False keeps the original image pre-processing. Newer transformers
+        # default to a faster implementation that resizes slightly differently, which
+        # would no longer match how the adapter was trained.
+        processor = Qwen2VLProcessor.from_pretrained(
+            BASE_MODEL_ID, use_fast=False, max_pixels=MAX_PIXELS
+        )
 
         logger.info("Model ready")
         return cls(model=model, processor=processor)

@@ -12,14 +12,20 @@ pydantic-settings==2.6.1
 # local (non-Docker) install resolves to the same releases.
 torch==2.5.1
 torchvision==0.20.1
-transformers==4.46.3
-# Applies the LoRA adapter on top of the Qwen2-VL base model.
-peft==0.13.2
+# Pinned to a release contemporary with the peft version that produced the
+# adapter. Older releases name Qwen2-VL's submodules differently, which makes
+# every LoRA key silently fail to match and serves the plain base model.
+transformers==4.57.3
+# Applies the LoRA adapter on top of the Qwen2-VL base model. Pinned to the exact
+# version recorded as "peft_version" in the adapter's own adapter_config.json:
+# older releases reject configuration keys that version writes.
+peft==0.18.1
 # Required by transformers to load large checkpoints without doubling peak memory.
 accelerate==1.1.1
 # Imported directly by scripts/download_model.py, so it is pinned explicitly rather
-# than being relied on as a transitive dependency of transformers.
-huggingface-hub==0.26.2
+# than being relied on as a transitive dependency of transformers, which requires
+# >=0.34 at the version pinned above.
+huggingface-hub==0.35.3
 pillow==11.0.0
 
 # Database: ORM and PostgreSQL driver

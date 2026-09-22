@@ -12,6 +12,10 @@ venv/
 .cache/
 models/
 
+# Test photographs. Kept out of the repository because they were collected from
+# the web and their copyright belongs to someone else.
+samples/
+
 # OS / editor
 .DS_Store
 .idea/
