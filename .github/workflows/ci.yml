@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run pointless, so stop it
+# rather than paying for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Installed directly rather than through the image: linting needs no
+      # database, no model and no container, so it should not wait for a build.
+      - name: Install ruff
+        run: pip install ruff==0.16.8
+
+      - name: Check lint rules
+        run: ruff check --output-format=github .
+
+      - name: Check formatting
+        run: ruff format --check .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The real .env never reaches the repository. The example file is enough
+      # here: the database is created fresh inside the runner, holds nothing but
+      # throwaway rows, and is destroyed with the machine. Putting a password in
+      # GitHub Secrets for it would protect nothing while implying it does.
+      #
+      # This step doubles as a check that .env.example stays complete: if a new
+      # required variable is added and not documented there, this job fails.
+      - name: Create a throwaway environment file
+        run: cp .env.example .env
+
+      # Builds the `test` stage, which is the deployed image plus pytest, so the
+      # suite runs against the same layers that ship rather than against a
+      # separately resolved environment.
+      - name: Build the test image
+        run: docker compose build test
+
+      # Compose waits for the database healthcheck before starting the suite.
+      # No model weights are downloaded: the tests replace the model with a stub.
+      - name: Run the test suite
+        run: docker compose run --rm test
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes

@@ -1,5 +1,7 @@
 # Turkish Cuisine VLM API
 
+[![CI](https://github.com/turhanGoksu/turkish-cuisine-vlm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/turhanGoksu/turkish-cuisine-vlm-api/actions/workflows/ci.yml)
+
 A containerised FastAPI service that serves [`Turhan123/turkish-cuisine-vlm`](https://huggingface.co/Turhan123/turkish-cuisine-vlm) — a LoRA adapter over Qwen2-VL-2B that identifies Turkish dishes from a photograph and answers nutrition questions about them in Turkish — and records every answer in PostgreSQL.
 
 The point of this repository is not the model; that was trained separately. The point is the service around it: how the image is built, why the weights live where they do, which endpoint blocks and which does not, and where the failure modes are.
