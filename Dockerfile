@@ -1,5 +1,8 @@
+# ---------------------------------------------------------------------------
+# base: the stage that is actually deployed.
+# ---------------------------------------------------------------------------
 # A slim Debian-based image: small, but still has apt and glibc when a wheel needs them.
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 # PYTHONDONTWRITEBYTECODE: skip .pyc files, they only bloat the image.
 # PYTHONUNBUFFERED: send logs straight to stdout so `docker logs` shows them live.
@@ -40,3 +43,24 @@ EXPOSE 8000
 # 0.0.0.0 is required: binding to 127.0.0.1 would only accept connections from inside
 # the container itself, making the API unreachable from the host or other containers.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# ---------------------------------------------------------------------------
+# test: the deployed image plus the test tooling, nothing else.
+# ---------------------------------------------------------------------------
+# Built FROM base rather than from python:3.11-slim on purpose. A stage built
+# from scratch would resolve its own dependencies and so would verify a
+# different environment from the one that ships; extending base means the tests
+# exercise exactly the layers that go to production.
+FROM base AS test
+
+USER root
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+# The linter reads its rules from pyproject.toml; without it ruff silently falls
+# back to its own defaults and checks a different set of rules than intended.
+COPY pyproject.toml .
+COPY tests/ ./tests/
+RUN chown -R appuser:appuser /code
+USER appuser
+
+CMD ["pytest", "-q"]

@@ -7,8 +7,8 @@ Endpoints:
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import (
     Depends,
@@ -133,9 +133,10 @@ def predict(
     # without ever holding the whole of it in memory.
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
+        limit_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"The image must be smaller than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            detail=f"The image must be smaller than {limit_mb} MB.",
         )
 
     try:

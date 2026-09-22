@@ -1,0 +1,8 @@
+# Test-only dependencies. Deliberately kept out of requirements.txt so they are
+# installed in the test stage of the Dockerfile and never ship in the image that
+# is deployed.
+pytest==8.3.3
+# Starlette's TestClient is built on httpx.
+httpx==0.27.2
+# Linter and formatter. One tool in place of flake8 + isort + a format check.
+ruff==0.16.8

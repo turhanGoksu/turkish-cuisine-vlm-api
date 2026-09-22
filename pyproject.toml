@@ -1,0 +1,28 @@
+# Tooling configuration only. The project is run as a container, not installed
+# as a package, so there is no build system section here.
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # import sorting
+    "N",   # PEP 8 naming
+    "UP",  # constructs made obsolete by newer Python
+    "B",   # bugbear: likely bugs rather than style
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# B008 warns about calls in argument defaults, which is right in general but
+# wrong for FastAPI: Depends/Query/File/Form in a signature is how the framework
+# declares dependencies, and the call is evaluated once at import, not per request.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+]

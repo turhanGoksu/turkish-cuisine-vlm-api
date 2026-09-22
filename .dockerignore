@@ -12,3 +12,5 @@ models/
 .idea/
 .vscode/
 README.md
+# CI definitions run on GitHub, never inside the image.
+.github/

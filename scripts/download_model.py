@@ -19,7 +19,9 @@ from huggingface_hub import snapshot_download
 # The LoRA adapter cannot run on its own; it is applied on top of the base model,
 # so both repositories have to be present in the cache.
 BASE_MODEL_ID: str = os.environ.get("BASE_MODEL_ID", "Qwen/Qwen2-VL-2B-Instruct")
-ADAPTER_MODEL_ID: str = os.environ.get("ADAPTER_MODEL_ID", "Turhan123/turkish-cuisine-vlm")
+ADAPTER_MODEL_ID: str = os.environ.get(
+    "ADAPTER_MODEL_ID", "Turhan123/turkish-cuisine-vlm"
+)
 
 
 def main() -> None:

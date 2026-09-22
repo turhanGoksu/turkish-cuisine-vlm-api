@@ -95,9 +95,7 @@ def decode_image(data: bytes) -> Image.Image:
 class DietitianModel:
     """A loaded vision-language model that answers questions about food images."""
 
-    def __init__(
-        self, model: PeftModel, processor: Qwen2VLProcessor
-    ) -> None:
+    def __init__(self, model: PeftModel, processor: Qwen2VLProcessor) -> None:
         self._model = model
         self._processor = processor
         # generate() mutates internal state and is CPU-saturating. Two threads running
@@ -188,10 +186,8 @@ class DietitianModel:
         # so that only the newly generated tokens are decoded.
         generated_ids = [
             output[len(prompt) :]
-            for prompt, output in zip(inputs.input_ids, output_ids)
+            for prompt, output in zip(inputs.input_ids, output_ids, strict=True)
         ]
-        answer = self._processor.batch_decode(
-            generated_ids, skip_special_tokens=True
-        )[0].strip()
+        decoded = self._processor.batch_decode(generated_ids, skip_special_tokens=True)
 
-        return answer, duration_ms
+        return decoded[0].strip(), duration_ms

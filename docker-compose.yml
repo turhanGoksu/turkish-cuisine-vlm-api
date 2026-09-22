@@ -34,7 +34,11 @@ services:
       start_period: 30s
 
   api:
-    build: .
+    build:
+      context: .
+      # Without an explicit target Docker builds the LAST stage in the file,
+      # which would pull the test tooling into the deployed image.
+      target: base
     restart: unless-stopped
     environment:
       # Assembled from the same variables the db service uses, so the password
@@ -77,6 +81,23 @@ services:
           # The model needs ~4.4 GB plus overhead. The ceiling stops a runaway
           # request from taking the whole host down with it.
           memory: 8g
+
+  test:
+    build:
+      context: .
+      target: test
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    # No model cache volume: the tests replace the model with a stub and never
+    # load any weights.
+    #
+    # A profile keeps this service out of `docker compose up`. Run it with:
+    #   docker compose run --rm test
+    profiles:
+      - test
 
 volumes:
   pgdata:

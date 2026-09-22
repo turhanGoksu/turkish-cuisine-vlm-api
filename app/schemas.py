@@ -70,7 +70,9 @@ class PredictionRecord(BaseModel):
     question: str
     answer: str
     duration_ms: int = Field(ge=0)
-    created_at: datetime = Field(description="UTC timestamp of when the row was written.")
+    created_at: datetime = Field(
+        description="UTC timestamp of when the row was written."
+    )
 
     # Lets FastAPI build this schema straight from a SQLAlchemy row object
     # (reading attributes) instead of requiring a dict.

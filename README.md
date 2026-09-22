@@ -134,6 +134,41 @@ At 2.2 B parameters, `float32` would need ~8.9 GB of weights alone and the conta
 
 ---
 
+## Tests
+
+```bash
+docker compose run --rm test
+```
+
+Twelve tests covering status codes, response shapes, persistence and pagination. They
+finish in under a second, which is a consequence of two earlier decisions rather than
+an accident:
+
+- The model is loaded in the `lifespan` hook, not at import time, so `TestClient(app)`
+  outside a context manager never touches it. Tests install a stub through
+  `app.dependency_overrides` instead.
+- The database is **not** stubbed. The schema relies on `timestamptz` and on enforced
+  `VARCHAR` lengths, neither of which SQLite reproduces, so tests that passed against
+  SQLite would say nothing about the two decisions they exist to protect. They run
+  against the real PostgreSQL service instead.
+
+Isolation comes from transactions: each test gets a session bound to a connection with
+an open transaction and `join_transaction_mode="create_savepoint"`, so the application's
+own `commit()` releases a savepoint rather than ending it, and everything is rolled back
+afterwards. Existing rows in the development database are left untouched.
+
+One rough edge is worth naming: `POST /predict` writes through `session_scope()` rather
+than a dependency, deliberately, so that it does not hold a pooled connection during
+generation. That is the right call in production and the one place the tests cannot
+redirect with `dependency_overrides`, so they monkeypatch it. Stepping outside dependency
+injection costs testability exactly where you step outside it.
+
+The `test` stage of the Dockerfile is built `FROM base` — the deployed image plus pytest
+and ruff — so the suite exercises the layers that ship rather than a separately resolved
+environment. CI runs the same two commands.
+
+---
+
 ## Measured behaviour
 
 Running on CPU inside Docker Desktop on an Apple laptop, with `MAX_NEW_TOKENS=150`:
@@ -184,7 +219,7 @@ This project is a demonstration of containerisation and API design, not a produc
 - **`Base.metadata.create_all()` instead of migrations.** It creates missing tables but cannot alter existing ones; adding a column later would leave the table untouched and break the application. One table that will not change makes this acceptable here. Alembic is the real answer.
 - **Offset pagination.** `OFFSET 500000` makes PostgreSQL read and discard half a million rows, and rows shift between pages when new ones are inserted. Keyset pagination is the fix at scale.
 - **No authentication and no rate limiting.** Uploads are capped at 10 MB and decoded before use, but an unauthenticated endpoint that costs two minutes of CPU per call is trivially abusable.
-- **No automated tests.** Loading is kept out of import time (`lifespan`, `lru_cache`) precisely so the modules can be imported and the model dependency overridden, but the tests themselves are not written yet.
+- **Nothing tests the model itself.** The suite covers the API's behaviour with the model stubbed out. Whether the adapter gives good answers is a separate evaluation problem, and the measurements above are three photographs, not a benchmark.
 
 ---
 
@@ -199,8 +234,16 @@ app/
   database.py   engine, session factory, session dependency
 scripts/
   download_model.py   fills the weight cache volume
-Dockerfile
+tests/
+  conftest.py         stub model, throwaway session, TestClient
+  test_health.py      readiness reporting
+  test_predict.py     happy path, 400, 413, 503, persistence
+  test_history.py     ordering, paging, parameter validation
+.github/workflows/
+  ci.yml              lint and test on every push
+Dockerfile            two stages: base (deployed) and test
 docker-compose.yml
+pyproject.toml        ruff configuration
 .env.example
 ```
 
